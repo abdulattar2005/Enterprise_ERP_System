@@ -1,9 +1,11 @@
-
 # Enterprise ERP System
 
 A modular-monolith Enterprise Resource Planning (ERP) backend built with Java 17 and Spring Boot 3.
 It covers five business areas (HR, Inventory, Accounting, Sales, Reporting) behind one secured REST API,
 with Docker, Kubernetes, CI/CD and monitoring files for running it in production.
+
+Author: Abdulrahim Ramjan Attar (backend development internship, monthly task)
+GitHub: https://github.com/abdulattar2005
 
 ---
 
