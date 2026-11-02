@@ -1,0 +1,65 @@
+// Declarative pipeline. Requires: JDK 17 + Maven tool, Docker on the agent,
+// credentials "docker-registry" (user/password) and a DOCKER_REGISTRY env var.
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = "registry.example.com/erp"
+        IMAGE           = "${DOCKER_REGISTRY}/erp-system:${BUILD_NUMBER}"
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps { checkout scm }
+        }
+
+        stage('Build') {
+            steps { sh 'mvn -B -DskipTests package' }
+        }
+
+        stage('Test') {
+            parallel {
+                stage('Unit and integration tests') {
+                    steps { sh 'mvn -B verify' }
+                    post { always { junit '**/target/surefire-reports/*.xml' } }
+                }
+                stage('Dependency vulnerability scan') {
+                    steps { sh 'mvn -B org.owasp:dependency-check-maven:check' }
+                }
+            }
+        }
+
+        stage('Build Docker image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-registry',
+                                                  usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                    sh '''
+                        docker build -t "$IMAGE" .
+                        echo "$REG_PASS" | docker login "$DOCKER_REGISTRY" -u "$REG_USER" --password-stdin
+                        docker push "$IMAGE"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to staging') {
+            when { branch 'main' }
+            steps {
+                sh '''
+                    kubectl -n erp-staging set image deployment/erp-system erp-system="$IMAGE"
+                    kubectl -n erp-staging rollout status deployment/erp-system --timeout=180s
+                '''
+            }
+        }
+    }
+
+    post {
+        failure { echo 'Build failed - see console output.' }
+    }
+}
